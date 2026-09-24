@@ -1,0 +1,28 @@
+# הרצה יומית של scripts/daily.mjs.
+#
+# כרגע רץ רק ידנית (Actions > הרצה יומית > Run workflow).
+# כדי שירוץ לבד כל יום, מסירים את ה-# משתי השורות של schedule.
+# 04:00 UTC = 07:00 שעון ישראל בקיץ (06:00 בחורף).
+#
+# סודות (למשל ANTHROPIC_API_KEY) מגדירים ב-GitHub תחת
+# Settings > Secrets and variables > Actions, ומוסיפים לבלוק env למטה.
+
+name: הרצה יומית
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 4 * * *"
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run daily
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
