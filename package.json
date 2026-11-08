@@ -10,6 +10,8 @@
     "daily": "node scripts/daily.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.119.0",
     "next": "15.5.2",
     "react": "19.1.1",
     "react-dom": "19.1.1"
