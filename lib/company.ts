@@ -26,3 +26,15 @@ export const emptyProfile: BrandProfile = {
   products: [],
   avoid: [],
 };
+
+export type ArticleSource = { url: string; title: string };
+
+export type Article = {
+  id: string;
+  company_id: string;
+  topic: string;
+  title: string;
+  content: string;
+  sources: ArticleSource[];
+  created_at: string;
+};
