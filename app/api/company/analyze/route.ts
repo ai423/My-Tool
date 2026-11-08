@@ -97,6 +97,8 @@ ${page}
       language: String(p.language ?? "עברית"),
       products: Array.isArray(p.products) ? p.products.map(String) : [],
       avoid: Array.isArray(p.avoid) ? p.avoid.map(String) : [],
+      positioning: "",
+      competitors: [],
     };
     return NextResponse.json({ profile });
   } catch {

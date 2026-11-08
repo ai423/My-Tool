@@ -279,6 +279,18 @@ export default function Home() {
                   onChange={(e) => setProfile({ avoid: lines(e.target.value) })} />
                 <span className="hint">שורה לכל מונח.</span>
               </div>
+              <div className="field">
+                <label htmlFor="positioning">מסר מיצוב</label>
+                <input id="positioning" value={p.positioning ?? ""}
+                  onChange={(e) => setProfile({ positioning: e.target.value })} />
+                <span className="hint">משפט אחד שהחברה רוצה שכל מאמר יעביר. אם ריק, הכלי לא ממציא מסר.</span>
+              </div>
+              <div className="field">
+                <label htmlFor="competitors">מתחרים שלא להזכיר</label>
+                <textarea id="competitors" value={(p.competitors ?? []).join("\n")}
+                  onChange={(e) => setProfile({ competitors: lines(e.target.value) })} />
+                <span className="hint">שורה לכל שם. הכלי לא יזכיר אותם, ויסמן אזהרה אם הופיעו.</span>
+              </div>
             </section>
           )}
 

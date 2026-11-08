@@ -6,6 +6,8 @@ export type BrandProfile = {
   language: string;
   products: string[];
   avoid: string[];
+  positioning?: string;
+  competitors?: string[];
 };
 
 export type Company = {
@@ -25,6 +27,8 @@ export const emptyProfile: BrandProfile = {
   language: "עברית",
   products: [],
   avoid: [],
+  positioning: "",
+  competitors: [],
 };
 
 export type ArticleSource = { url: string; title: string };

@@ -21,10 +21,51 @@ export function buildSystem(): string {
 - מצטט רק כתובות ששמעת עליהן בתוצאות החיפוש. אסור להמציא כתובת, נתון או ציטוט.
 - ציטוט ישיר חייב להופיע בפועל במקור. לא מצאת ציטוט אמיתי ממומחה? אל תכלול ציטוט, ואל תמציא.
 - אין נתון בלי מקור. אין מקור בלי קישור.
+- לעולם לא מעתיק ניסוחים ממקורות. מנסח כל רעיון מחדש במילים שלך. ציטוט ישיר רק קצר, במירכאות, עם שם המקור.
+- נתון שוק אחד לכל נושא, עם מקור. אם שני מקורות סותרים, בוחר את המהימן יותר ומשאיר רק אותו.
+- לא מזכיר חברות אחרות בשם כדי לקדם אותן. מקור שהוא חברה מצוטט רק כמקור לנתון.
+- קול אחד לאורך כל המאמר, כמו כותב אחד. לא טלאים של משפטים ממקורות שונים.
+- כל הגדרה מופיעה פעם אחת בלבד. אין חזרות, וחלק השאלות הנפוצות לא חוזר על הגוף.
 - לא כותב שום טקסט לפני החיפוש או בין החיפושים. הפלט הסופי הוא המאמר בלבד, בפורמט Markdown, והוא מתחיל בכותרת ראשית אחת בשורה שמתחילה ב-"# ".
 - אין מקפים ארוכים בטקסט. במקומם פסיק, נקודה או נקודתיים.
 
-מבנה המאמר: כותרת ראשית (H1), פתיח של 2 עד 3 משפטים שעונה ישר על השאלה של הנושא (תשובה ישירה, כמו שמנוע AI יצטט), כותרות משנה (H2) בצורת שאלות או נושאים ברורים, רשימות בולטים איפה שמתאים, חלק "שאלות נפוצות" קצר בסוף, וסיכום קצר.`;
+מבנה המאמר, בסדר הזה:
+1. כותרת ראשית (H1).
+2. פתיח של 2 עד 3 משפטים שעונה ישר על השאלה של הנושא, כמו שמנוע AI יצטט.
+3. נקודות מפתח (Key Takeaways): 3 עד 5 בולטים.
+4. תוכן עניינים: רשימה של כותרות המשנה.
+5. גוף המאמר: כותרות משנה (H2) בצורת שאלות ברורות, ובכל חלק דוגמה אחת לפחות, או תרחיש מקורי מעולם הלקוח של החברה (מסומן במפורש כתרחיש ולא כנתון).
+6. שאלות נפוצות קצר, עם שאלות חדשות.
+7. סיכום קצר וקריאה לפעולה שמחברת את הנושא לחברה, בלי לחץ מכירתי.`;
+}
+
+export function buildEditSystem(): string {
+  return `אתה עורך ראשי של תוכן SEO ו-GEO. אתה מקבל טיוטת מאמר ומחזיר אותה אחרי עריכה קפדנית. אתה לא כותב מחדש מאפס, ולא מוסיף מקורות או נתונים חדשים.`;
+}
+
+export function buildEditPrompt(company: Company, topic: string, draft: string): string {
+  const p = company.profile;
+  const competitors = p?.competitors?.length ? p.competitors.join(", ") : "אין";
+  return `ערוך את הטיוטה הבאה על הנושא "${topic}" של החברה ${company.name}.
+
+בדוק ותקן, לפי הרשימה:
+1. סתירות: אם יש שני נתונים שסותרים זה את זה, השאר רק אחד, המהימן, עם הקישור שלו.
+2. חזרתיות: כל הגדרה פעם אחת. חלק השאלות הנפוצות לא חוזר על הגוף.
+3. מתחרים וחברות אחרות: הסר אזכור בשם של כל חברה שאינה ${company.name}, אלא אם היא מקור לנתון מצוטט. מתחרים שאסור להזכיר: ${competitors}.
+4. ניסוחים מועתקים: משפט שנשמע כמו הגדרה מוכנה מוויקיפדיה או מבלוג של ספק, נסח מחדש במילים שלך. ציטוט ישיר נשאר רק אם הוא קצר ובמירכאות.
+5. קול אחד: אחד הסגנון והטון בכל המאמר.${p?.tone ? ` טון המותג: ${p.tone}.` : ""}
+6. מסר מיצוב: ${p?.positioning ? `המאמר צריך להעביר: ${p.positioning}.` : "לא הוגדר מסר מיצוב. אל תמציא מסר שלא מופיע בפרטי החברה."}
+7. מבנה: חייבים להיות נקודות מפתח, תוכן עניינים, כותרות בצורת שאלה, שאלות נפוצות וקריאה לפעולה בסוף. השלם מה שחסר.
+8. אין מקפים ארוכים בטקסט. במקומם פסיק, נקודה או נקודתיים.
+
+כללי ברזל:
+- שמור כל קישור קיים בדיוק כפי שהוא. אל תוסיף קישורים, נתונים או ציטוטים חדשים.
+- אל תשנה עובדה שיש לה מקור, חוץ מהסרה בגלל סתירה.
+- החזר רק את המאמר המלא ב-Markdown, מתחיל בשורת "# ". בלי הסברים.
+
+הטיוטה:
+
+${draft}`;
 }
 
 export function buildPrompt(company: Company, topic: string, words = TARGET_WORDS): string {
@@ -44,6 +85,9 @@ export function buildPrompt(company: Company, topic: string, words = TARGET_WORD
     lines.push(`שפת המאמר: ${p.language || "עברית"}`);
     if (p.products.length) lines.push(`מוצרים ושירותים: ${p.products.join(", ")}`);
     if (p.avoid.length) lines.push(`מונחים שאסור להשתמש בהם: ${p.avoid.join(", ")}`);
+    if (p.positioning) lines.push(`מסר המיצוב שהמאמר צריך להעביר: ${p.positioning}`);
+    if (p.competitors?.length)
+      lines.push(`חברות שאסור להזכיר בשם: ${p.competitors.join(", ")}`);
   } else {
     lines.push("שפת המאמר: עברית");
   }
@@ -124,12 +168,20 @@ export type ProcessedArticle = {
 };
 
 // מנקה את הטקסט: קישור שלא הגיע מהחיפוש, או שלא חי, מוסר ונשאר רק הטקסט שלו.
+// מקף ארוך הופך לפסיק, ומקף בינוני בין מספרים הופך למקף רגיל
+export function cleanDashes(text: string): string {
+  return text
+    .replace(/(\d)\s*–\s*(\d)/g, "$1-$2")
+    .replace(/\s*[—–]\s*/g, ", ");
+}
+
 export async function processArticle(
   rawText: string,
-  found: Array<{ url: string; title: string }>
+  found: Array<{ url: string; title: string }>,
+  competitors: string[] = []
 ): Promise<ProcessedArticle> {
   const start = rawText.search(/^# /m);
-  let content = start >= 0 ? rawText.slice(start) : rawText;
+  let content = cleanDashes(start >= 0 ? rawText.slice(start) : rawText);
 
   const foundMap = new Map(found.map((s) => [normalizeUrl(s.url), s]));
   const cited = [...new Set(extractLinks(content))];
@@ -154,6 +206,11 @@ export async function processArticle(
     notes.push(`${many(invented.length)} שלא הופיעו בחיפוש. כדאי לבדוק את הטענות שלידם.`);
   if (dead.length)
     notes.push(`${many(dead.length)} שלא נפתחים. כדאי להחליף במקור אחר.`);
+  const plain = content.replace(LINK_RE, "$1").toLowerCase();
+  for (const c of competitors) {
+    if (c.trim() && plain.includes(c.trim().toLowerCase()))
+      notes.push(`המאמר מזכיר את "${c.trim()}", שהוגדר כמתחרה. הסירו את האזכור לפני פרסום.`);
+  }
   if (sources.length === 0)
     notes.push("אין במאמר אף מקור מאומת. הוסיפו מקורות לפני פרסום.");
 
