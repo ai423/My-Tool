@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toolConfig } from "@/tool.config";
+import ArticleWriter from "./ArticleWriter";
 import { emptyProfile, type BrandProfile, type Company } from "@/lib/company";
 
 type Draft = {
@@ -22,6 +23,7 @@ export default function Home() {
   const [companies, setCompanies] = useState<Company[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [writing, setWriting] = useState<Company | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -139,7 +141,9 @@ export default function Home() {
         <button className="btn secondary" onClick={signOut}>יציאה</button>
       </header>
 
-      {!draft && (
+      {writing && <ArticleWriter company={writing} onBack={() => setWriting(null)} />}
+
+      {!draft && !writing && (
         <>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <h2 style={{ fontSize: "1.25rem" }}>החברות שלכם</h2>
@@ -172,36 +176,41 @@ export default function Home() {
           {companies && companies.length > 0 && (
             <div className="stack">
               {companies.map((c) => (
-                <button
-                  key={c.id}
-                  className="card"
-                  style={{ textAlign: "start", cursor: "pointer", font: "inherit", color: "inherit" }}
-                  onClick={() =>
-                    setDraft({
-                      id: c.id,
-                      name: c.name,
-                      website: c.website,
-                      linkedin: c.linkedin ?? "",
-                      notes: c.notes ?? "",
-                      profile: c.profile,
-                    })
-                  }
-                >
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <strong>{c.name}</strong>
-                    <span className={`status ${c.profile ? "ok" : "warn"}`}>
-                      {c.profile ? "פרופיל מוכן" : "אין פרופיל"}
+                <div key={c.id} className="card">
+                  <button
+                    style={{ textAlign: "start", cursor: "pointer", font: "inherit", color: "inherit", background: "none", border: 0, padding: 0, display: "grid", gap: 8 }}
+                    onClick={() =>
+                      setDraft({
+                        id: c.id,
+                        name: c.name,
+                        website: c.website,
+                        linkedin: c.linkedin ?? "",
+                        notes: c.notes ?? "",
+                        profile: c.profile,
+                      })
+                    }
+                  >
+                    <span className="row" style={{ justifyContent: "space-between" }}>
+                      <strong>{c.name}</strong>
+                      <span className={`status ${c.profile ? "ok" : "warn"}`}>
+                        {c.profile ? "פרופיל מוכן" : "אין פרופיל"}
+                      </span>
                     </span>
+                    <small dir="ltr" style={{ textAlign: "start" }}>{c.website}</small>
+                  </button>
+                  <div className="row">
+                    <button className="btn secondary" onClick={() => setWriting(c)}>
+                      כתיבת מאמר
+                    </button>
                   </div>
-                  <small dir="ltr" style={{ textAlign: "start" }}>{c.website}</small>
-                </button>
+                </div>
               ))}
             </div>
           )}
         </>
       )}
 
-      {draft && (
+      {draft && !writing && (
         <>
           <h2 style={{ fontSize: "1.25rem" }}>{draft.id ? "עריכת חברה" : "חברה חדשה"}</h2>
 
