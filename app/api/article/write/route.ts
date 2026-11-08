@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
-import { askClaudeWithSearch, hasClaudeKey } from "@/lib/claude";
-import { buildPrompt, buildSystem, processArticle } from "@/lib/article";
+import { askClaude, askClaudeWithSearch, hasClaudeKey } from "@/lib/claude";
+import {
+  buildEditPrompt,
+  buildEditSystem,
+  buildPrompt,
+  buildSystem,
+  processArticle,
+} from "@/lib/article";
 import { createClient } from "@/lib/supabase/server";
 import type { Company } from "@/lib/company";
 
@@ -47,7 +53,21 @@ export async function POST(req: Request) {
       { system: buildSystem(), maxTokens: 8000, maxSearches: 6 }
     );
     if (!text) throw new Error("empty");
-    return NextResponse.json(await processArticle(text, sources));
+
+    // סבב עריכה. אם הוא נכשל, ממשיכים עם הטיוטה כמו שהיא.
+    let final = text;
+    try {
+      const edited = await askClaude(buildEditPrompt(company as Company, topic, text), {
+        system: buildEditSystem(),
+        maxTokens: 8000,
+      });
+      if (/^# /m.test(edited)) final = edited;
+    } catch {
+      // הטיוטה המקורית נשארת
+    }
+
+    const competitors = (company as Company).profile?.competitors ?? [];
+    return NextResponse.json(await processArticle(final, sources, competitors));
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     const searchOff = /web_search|tool/i.test(msg) && /400|403/.test(msg);
