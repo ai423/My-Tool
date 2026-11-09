@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { extractNotes, findPages, readPages } from "@/lib/research";
+import { distinctDomains, extractNotes, gatherPages, MIN_DOMAINS } from "@/lib/research";
 import { fail, loadRequest } from "@/lib/article-api";
 
 // שלב 1: מוצא מקורות, קורא את העמודים, ומחלץ פתקי מחקר מאומתים.
@@ -9,10 +9,15 @@ export async function POST(req: Request) {
   const r = await loadRequest(req);
   if ("error" in r) return r.error;
   try {
-    const refs = await findPages(r.topic, r.company);
-    const pages = await readPages(refs);
+    const pages = await gatherPages(r.topic, r.company);
     if (pages.length === 0) {
       return fail("לא הצלחתי לקרוא אף מקור לנושא הזה. נסו נושא אחר או ניסוח אחר.", 422);
+    }
+    if (distinctDomains(pages) < MIN_DOMAINS) {
+      return fail(
+        `נמצאו מקורות מ-${distinctDomains(pages)} אתרים בלבד, ולא מספיק למאמר אמין. נסו ניסוח מדויק או רחב יותר של הנושא.`,
+        422
+      );
     }
     const { notes, dropped } = await extractNotes(
       r.topic,

@@ -4,7 +4,7 @@ import { isPublicUrl, normalizeUrl } from "@/lib/web";
 
 // כתיבת מאמר: פרומפטים, בדיקות איכות בקוד, וקליטת התוצאה.
 
-export const TARGET_WORDS = 1200;
+export const MAX_WORDS = 1400;
 
 // ---------- פרומפטים ----------
 
@@ -17,6 +17,9 @@ export function buildSystem(): string {
 - אסור מספר שלא מופיע בפתקים. אסור להוסיף נתון מהידע שלך. דוגמה חשבונית מותרת רק אם היא מסומנת במפורש כדוגמה (למשל "לדוגמה, אם...").
 - ציטוט ישיר של אדם רק מתוך הפתקים, מילה במילה, עם שם ותפקיד. אין ציטוטים בפתקים? אל תכלול ציטוט, ואל תמציא.
 - אתה לא רואה את הטקסט של המקורות, ולכן אתה לא יכול להעתיק אותו. נסח כל רעיון במילים שלך, בקול אחד, כמו כותב אחד.
+- פתקים עם scope "vendor" מתארים מוצר או מונח של יצרן מסוים. אל תציג אותם כהגדרה כללית של הנושא. השתמש בהם רק כדוגמה, בשם היצרן ("אצל Zendesk, למשל..."), ורק אם הם מועילים לקורא של החברה.
+- בנה את ההגדרה והחלקים הכלליים מפתקי scope "general". אם יש מעט מהם, כתוב פחות ובמדויק, ולא תמלא בתיעוד של יצרנים.
+- כל חלק עם כותרת H2 נשען על לפחות עובדה אחת עם קישור, או שהוא מסומן במפורש כתרחיש או כהמלצה. אין חלק שהוא רק טענות כלליות בלי מקור.
 
 הטענות על החברה:
 - אתה מתאר את החברה רק לפי הפרטים שקיבלת עליה (תיאור, מוצרים, הערות, מסר מיצוב). אל תייחס לה יכולת, מוצר, נתון או לקוח שלא כתובים שם.
@@ -41,16 +44,11 @@ export function buildSystem(): string {
 הפלט הוא המאמר בלבד, ב-Markdown, בלי הסברים לפניו או אחריו.`;
 }
 
-export function buildPrompt(
-  company: Company,
-  topic: string,
-  notes: Notes,
-  words = TARGET_WORDS
-): string {
+export function buildPrompt(company: Company, topic: string, notes: Notes): string {
   const p = company.profile;
   const lines = [
     `כתוב מאמר על הנושא: ${topic}`,
-    `אורך: כ-${words} מילים.`,
+    `אורך: בין 1,100 ל-${MAX_WORDS} מילים. אל תחרוג.`,
     "",
     "פרטי המותג (חובה לכתוב בקולו):",
     `שם החברה: ${company.name}`,
@@ -82,6 +80,8 @@ export function buildEditSystem(): string {
 }
 
 export type Issues = {
+  unsourcedSections: string[];
+  words: number;
   unsupported: Array<{ sentence: string; numbers: string[] }>;
   repeated: string[];
   copied: Array<{ sentence: string; url: string }>;
@@ -96,6 +96,16 @@ export function buildEditPrompt(
   const p = company.profile;
   const competitors = p?.competitors?.length ? p.competitors.join(", ") : "אין";
   const found: string[] = [];
+  if (issues.words > MAX_WORDS)
+    found.push(
+      `0. אורך: במאמר ${issues.words} מילים. קצר ל-${MAX_WORDS} מילים לכל היותר: מחק חזרות, פסקאות שוליות ודוגמאות מיותרות, ושמור על המבנה והקישורים.`
+    );
+  if (issues.unsourcedSections.length)
+    found.push(
+      `ד. חלקים בלי אף קישור למקור. הוסף עובדה עם קישור מהטקסט הקיים, או הפוך את החלק לתרחיש מסומן, או מחק טענות עובדתיות שאין להן מקור:\n${issues.unsourcedSections
+        .map((t) => `- ${t}`)
+        .join("\n")}`
+    );
   if (issues.unsupported.length)
     found.push(
       `א. נתונים שלא נמצאים בפתקי המחקר. הסר כל מספר כזה, או נסח את המשפט בלי מספר, אלא אם זו דוגמה חשבונית שמסומנת כדוגמה:\n${issues.unsupported
@@ -254,6 +264,21 @@ export function findCopied(
   return out.slice(0, 8);
 }
 
+// חלקי H2 עם גוף ארוך ובלי אף קישור. שאלות נפוצות ונקודות מפתח מדולגים.
+export function findUnsourcedSections(content: string): string[] {
+  const parts = content.split(/^## /m).slice(1);
+  const out: string[] = [];
+  for (const part of parts) {
+    const [title, ...rest] = part.split("\n");
+    if (/faq|frequently|שאלות נפוצות|key takeaways|נקודות מפתח|conclusion|סיכום/i.test(title)) continue;
+    const body = rest.join("\n");
+    if (plainText(body).split(/\s+/).filter(Boolean).length < 60) continue;
+    if (!LINK_RE.test(body)) out.push(title.trim());
+    LINK_RE.lastIndex = 0;
+  }
+  return out.slice(0, 5);
+}
+
 export function computeIssues(
   content: string,
   notes: Notes,
@@ -263,6 +288,8 @@ export function computeIssues(
 ): Issues {
   const allowedText = [JSON.stringify(notes), JSON.stringify(company.profile ?? {}), company.notes ?? "", topic].join(" ");
   return {
+    words: plainText(content).split(/\s+/).filter(Boolean).length,
+    unsourcedSections: findUnsourcedSections(content),
     unsupported: findUnsupported(content, allowedText),
     repeated: findRepeated(content),
     copied: findCopied(content, pages, notes),
@@ -271,6 +298,10 @@ export function computeIssues(
 
 export function issuesToNotes(issues: Issues): string[] {
   const out: string[] = [];
+  if (issues.words > MAX_WORDS)
+    out.push(`המאמר ארוך מהיעד: ${issues.words} מילים, והיעד עד ${MAX_WORDS}.`);
+  if (issues.unsourcedSections.length)
+    out.push(`חלקים בלי אף מקור: ${issues.unsourcedSections.map((t) => `"${t}"`).join(", ")}. הוסיפו מקור או קצרו.`);
   if (issues.unsupported.length)
     out.push(
       `נשארו ${issues.unsupported.length} משפטים עם נתון שלא נמצא במקורות שנקראו. אמתו או הסירו: ${issues.unsupported

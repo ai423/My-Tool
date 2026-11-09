@@ -193,7 +193,7 @@ export default function ArticleWriter({
               ))}
             </ol>
             <div className="skeleton" style={{ height: 20 }} />
-            <small>התהליך המלא לוקח 2 עד 3 דקות. אל תסגרו את הדף.</small>
+            <small>התהליך המלא לוקח 3 עד 4 דקות. אל תסגרו את הדף.</small>
           </div>
         )}
       </section>
