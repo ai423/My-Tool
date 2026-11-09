@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Article, ArticleSource, Company } from "@/lib/company";
+import type { Article, ArticleSeo, ArticleSource, Company, ResearchItem } from "@/lib/company";
 
 type Draft = {
   id?: string;
@@ -12,7 +12,28 @@ type Draft = {
   sources: ArticleSource[];
   words: number;
   notes: string[];
+  seo: ArticleSeo | null;
+  companyClaims: string[];
+  research: ResearchItem[];
 };
+
+const STAGES = ["מחפש מקורות וקורא אותם", "כותב את המאמר", "בודק ומשפר"];
+
+async function call(path: string, body: unknown) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  let j: { error?: string } & Record<string, unknown>;
+  try {
+    j = await r.json();
+  } catch {
+    throw new Error("השרת לא ענה בזמן. נסו שוב.");
+  }
+  if (!r.ok) throw new Error(j.error || "שגיאה לא ידועה.");
+  return j;
+}
 
 const wordCount = (s: string) => s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").split(/\s+/).filter(Boolean).length;
 
@@ -33,13 +54,12 @@ export default function ArticleWriter({
   const [topic, setTopic] = useState("");
   const [topicError, setTopicError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [slow, setSlow] = useState(false);
+  const [stage, setStage] = useState(0);
   const [error, setError] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saved, setSaved] = useState<Article[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
-  const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const say = (m: string) => {
     setToast(m);
@@ -68,23 +88,26 @@ export default function ArticleWriter({
   async function write() {
     if (!checkTopic()) return;
     setLoading(true);
-    setSlow(false);
+    setStage(0);
     setError("");
-    slowTimer.current = setTimeout(() => setSlow(true), 3000);
     try {
-      const r = await fetch("/api/article/write", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ companyId: company.id, topic: topic.trim() }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error);
-      setDraft({ topic: topic.trim(), ...j });
-      say(`נכתבו ${j.words} מילים. עברו על המאמר ושמרו.`);
+      const t = topic.trim();
+      const research = await call("/api/article/research", { companyId: company.id, topic: t });
+      setStage(1);
+      const d = await call("/api/article/draft", { companyId: company.id, topic: t, notes: research.notes });
+      setStage(2);
+      const f = (await call("/api/article/finish", {
+        companyId: company.id,
+        topic: t,
+        draft: d.draft,
+        notes: research.notes,
+        pages: research.pages,
+      })) as unknown as Omit<Draft, "topic">;
+      setDraft({ topic: t, ...f });
+      say(`נכתבו ${f.words} מילים. עברו על האזהרות ושמרו.`);
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : "לא הצלחתי לכתוב את המאמר. נסו שוב.");
     } finally {
-      if (slowTimer.current) clearTimeout(slowTimer.current);
       setLoading(false);
     }
   }
@@ -93,7 +116,7 @@ export default function ArticleWriter({
     if (!draft) return;
     setSaving(true);
     const title = draft.content.match(/^# (.+)$/m)?.[1].trim() ?? draft.title;
-    const row = { company_id: company.id, topic: draft.topic, title, content: draft.content, sources: draft.sources };
+    const row = { company_id: company.id, topic: draft.topic, title, content: draft.content, sources: draft.sources, seo: draft.seo };
     const { data, error: err } = draft.id
       ? await supabase.from("articles").update(row).eq("id", draft.id).select().single()
       : await supabase.from("articles").insert(row).select().single();
@@ -128,6 +151,9 @@ export default function ArticleWriter({
       sources: a.sources,
       words: wordCount(a.content),
       notes: [],
+      seo: a.seo ?? null,
+      companyClaims: [],
+      research: [],
     });
   }
 
@@ -149,7 +175,7 @@ export default function ArticleWriter({
             disabled={loading}
           />
           {topicError && <span className="error">{topicError}</span>}
-          <span className="hint">הכלי מחפש מקורות אמיתיים וכותב כ-1,200 מילים בקול של המותג.</span>
+          <span className="hint">הכלי קורא מקורות אמיתיים, בודק אותם וכותב כ-1,200 מילים בקול של המותג.</span>
         </div>
         <div className="row">
           <button className={draft ? "btn secondary" : "btn"} onClick={write} disabled={loading}>
@@ -158,14 +184,16 @@ export default function ArticleWriter({
         </div>
         {loading && (
           <div className="stack" aria-busy="true">
+            <ol style={{ margin: 0, paddingInlineStart: 22, display: "grid", gap: 6 }}>
+              {STAGES.map((name, i) => (
+                <li key={name} style={{ color: i <= stage ? "var(--ink)" : "var(--ink-3)", fontWeight: i === stage ? 600 : 400 }}>
+                  {name}
+                  {i < stage && " (הושלם)"}
+                </li>
+              ))}
+            </ol>
             <div className="skeleton" style={{ height: 20 }} />
-            <div className="skeleton" style={{ height: 20, width: "80%" }} />
-            <div className="skeleton" style={{ height: 20, width: "60%" }} />
-            {slow && (
-              <small>
-                הכלי מחפש מקורות, בודק קישורים וכותב. זה לוקח כדקה, אל תסגרו את הדף.
-              </small>
-            )}
+            <small>התהליך המלא לוקח 2 עד 3 דקות. אל תסגרו את הדף.</small>
           </div>
         )}
       </section>
@@ -210,6 +238,53 @@ export default function ArticleWriter({
               </ul>
             )}
           </div>
+
+          {draft.seo && (
+            <div className="stack">
+              <strong style={{ fontSize: "0.95rem" }}>חבילת SEO</strong>
+              <div className="field">
+                <label htmlFor="seo-title">כותרת SEO</label>
+                <input id="seo-title" readOnly value={draft.seo.seoTitle} />
+              </div>
+              <div className="field">
+                <label htmlFor="seo-meta">תיאור מטא ({draft.seo.metaDescription.length} מתוך 150 תווים)</label>
+                <textarea id="seo-meta" readOnly style={{ minHeight: 72 }} value={draft.seo.metaDescription} />
+              </div>
+              <div className="field">
+                <label htmlFor="seo-slug">כתובת (slug)</label>
+                <input id="seo-slug" dir="ltr" readOnly value={draft.seo.slug} />
+              </div>
+              <small>
+                מילת מפתח מרכזית: <strong>{draft.seo.primaryKeyword}</strong>, מופיעה{" "}
+                <span className="numeric">{draft.seo.keywordCount}</span> פעמים
+              </small>
+            </div>
+          )}
+
+          {draft.companyClaims.length > 0 && (
+            <details>
+              <summary>משפטים שמזכירים את החברה, לאישור מול הלקוח ({draft.companyClaims.length})</summary>
+              <ul style={{ margin: "8px 0 0", paddingInlineStart: 20, display: "grid", gap: 6 }}>
+                {draft.companyClaims.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {draft.research.length > 0 && (
+            <details>
+              <summary>חומר המחקר, כל פריט עם המקור שלו ({draft.research.length})</summary>
+              <ul style={{ margin: "8px 0 0", paddingInlineStart: 20, display: "grid", gap: 6 }}>
+                {draft.research.map((r, i) => (
+                  <li key={i}>
+                    <span className="status ok">{r.kind}</span> {r.text}{" "}
+                    <a href={r.url} target="_blank" rel="noopener noreferrer">מקור</a>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
 
           <div className="row">
             <button className="btn" onClick={save} disabled={saving}>

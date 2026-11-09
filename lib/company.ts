@@ -40,5 +40,16 @@ export type Article = {
   title: string;
   content: string;
   sources: ArticleSource[];
+  seo: ArticleSeo | null;
   created_at: string;
 };
+
+export type ArticleSeo = {
+  primaryKeyword: string;
+  seoTitle: string;
+  metaDescription: string;
+  slug: string;
+  keywordCount: number;
+};
+
+export type ResearchItem = { kind: string; text: string; url: string };
