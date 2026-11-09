@@ -124,19 +124,59 @@ function mergeRefs(lists: PageRef[][], max = 12): PageRef[] {
 
 export const MIN_DOMAINS = 3;
 
+export type Provider = "claude" | "tavily";
+
+// חיפוש ב-Tavily: רק גילוי כתובות. הקריאה והאימות נשארים בקוד שלנו.
+async function tavilySearch(query: string, max = 5): Promise<PageRef[]> {
+  const key = process.env.TAVILY_API_KEY;
+  if (!key) throw new Error("TAVILY_KEY_MISSING");
+  const r = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+    body: JSON.stringify({ query, search_depth: "advanced", max_results: max }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (r.status === 401 || r.status === 403) throw new Error("TAVILY_AUTH");
+  if (!r.ok) return [];
+  const data = (await r.json()) as { results?: Array<{ url?: string; title?: string }> };
+  return (data.results ?? [])
+    .filter((x) => x.url)
+    .map((x) => ({ url: x.url as string, title: x.title || (x.url as string) }));
+}
+
+function tavilyQueries(topic: string, company: Company): string[] {
+  const p = company.profile;
+  const field = (p?.audience || p?.summary || "").slice(0, 70);
+  return [
+    `${topic} definition explained`,
+    `${topic} use cases ${field}`.trim(),
+    `${topic} market statistics research report`,
+    `${topic} expert interview analyst perspective`,
+  ];
+}
+
 // מוצא וקורא עמודים. אם המגוון נמוך מדי, סבב חיפוש שני בזווית אחרת.
-export async function gatherPages(topic: string, company: Company): Promise<Page[]> {
-  const angles = ANGLES(topic, company);
-  const lists = await Promise.all(angles.map((a) => searchAngle(a.prompt)));
+export async function gatherPages(
+  topic: string,
+  company: Company,
+  provider: Provider = "claude"
+): Promise<Page[]> {
+  const lists =
+    provider === "tavily"
+      ? await Promise.all(tavilyQueries(topic, company).map((q) => tavilySearch(q, 4)))
+      : await Promise.all(ANGLES(topic, company).map((a) => searchAngle(a.prompt)));
   let pages = await readPages(mergeRefs(lists));
 
   if (distinctDomains(pages) < MIN_DOMAINS) {
-    const extra = await searchAngle(
-      `מצא מקורות נוספים ומגוונים על "${topic}", מאתרים שונים מאלה שכבר נבחרו: ${pages
-        .map((p) => hostOf(p.url))
-        .join(", ")}. עדיפות להסברים כלליים, למחקרים ולעיתונות מקצועית.
+    const extra =
+      provider === "tavily"
+        ? await tavilySearch(`${topic} guide overview`, 8)
+        : await searchAngle(
+            `מצא מקורות נוספים ומגוונים על "${topic}", מאתרים שונים מאלה שכבר נבחרו: ${pages
+              .map((p) => hostOf(p.url))
+              .join(", ")}. עדיפות להסברים כלליים, למחקרים ולעיתונות מקצועית.
 בחר עד 6 עמודים. החזר JSON בלבד: {"pages":[{"url":"...","title":"..."}]}`
-    );
+          );
     const have = new Set(pages.map((p) => normalizeUrl(p.url)));
     const more = await readPages(extra.filter((r) => !have.has(normalizeUrl(r.url))));
     pages = [...pages, ...more];

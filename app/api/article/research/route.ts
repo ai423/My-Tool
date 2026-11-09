@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { distinctDomains, extractNotes, gatherPages, MIN_DOMAINS } from "@/lib/research";
+import { distinctDomains, extractNotes, gatherPages, MIN_DOMAINS, type Provider } from "@/lib/research";
 import { fail, loadRequest } from "@/lib/article-api";
 
 // שלב 1: מוצא מקורות, קורא את העמודים, ומחלץ פתקי מחקר מאומתים.
@@ -9,7 +9,8 @@ export async function POST(req: Request) {
   const r = await loadRequest(req);
   if ("error" in r) return r.error;
   try {
-    const pages = await gatherPages(r.topic, r.company);
+    const provider: Provider = r.body.provider === "tavily" ? "tavily" : "claude";
+    const pages = await gatherPages(r.topic, r.company, provider);
     if (pages.length === 0) {
       return fail("לא הצלחתי לקרוא אף מקור לנושא הזה. נסו נושא אחר או ניסוח אחר.", 422);
     }
@@ -34,6 +35,10 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
+    if (msg === "TAVILY_KEY_MISSING")
+      return fail("TAVILY_API_KEY לא מוגדר ב-Vercel. הוסיפו אותו, פרסו מחדש, או בחרו חיפוש עם Claude.", 503);
+    if (msg === "TAVILY_AUTH")
+      return fail("המפתח של Tavily נדחה. בדקו אותו ב-Vercel, או בחרו חיפוש עם Claude.", 401);
     const searchOff = /web_search|tool/i.test(msg) && /400|403/.test(msg);
     return fail(
       searchOff
