@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Article, ArticleSeo, ArticleSource, Company, ResearchItem } from "@/lib/company";
+import type { Check, ParsedBrief } from "@/lib/brief";
 
 type Draft = {
   id?: string;
@@ -15,6 +16,7 @@ type Draft = {
   seo: ArticleSeo | null;
   companyClaims: string[];
   research: ResearchItem[];
+  compliance?: Check[] | null;
   meta?: string;
 };
 
@@ -55,6 +57,13 @@ export default function ArticleWriter({
   const [topic, setTopic] = useState("");
   const [topicError, setTopicError] = useState("");
   const [provider, setProvider] = useState<"claude" | "tavily">("claude");
+  const [mode, setMode] = useState<"topic" | "brief">("topic");
+  const [briefText, setBriefText] = useState("");
+  const [briefs, setBriefs] = useState<ParsedBrief[] | null>(null);
+  const [briefIndex, setBriefIndex] = useState(0);
+  const [parsing, setParsing] = useState(false);
+  const [briefError, setBriefError] = useState("");
+  const brief = mode === "brief" && briefs ? briefs[briefIndex] : null;
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState(0);
   const [error, setError] = useState("");
@@ -87,16 +96,49 @@ export default function ArticleWriter({
     return t.length >= 3;
   }
 
+  async function parseBrief() {
+    if (briefText.trim().length < 80) {
+      setBriefError("הדביקו את הבריף המלא, כולל הכותרות והמילות מפתח.");
+      return;
+    }
+    setParsing(true);
+    setBriefError("");
+    setBriefs(null);
+    try {
+      const j = await call("/api/article/brief", { text: briefText });
+      const list = j.briefs as ParsedBrief[];
+      setBriefs(list);
+      setBriefIndex(0);
+      say(list.length > 1 ? `זוהו ${list.length} בריפים. בחרו איזה לכתוב.` : "הבריף נקרא. בדקו את מה שזוהה.");
+    } catch (e) {
+      setBriefError(e instanceof Error && e.message ? e.message : "לא הצלחתי לנתח את הבריף. נסו שוב.");
+    } finally {
+      setParsing(false);
+    }
+  }
+
   async function write() {
-    if (!checkTopic()) return;
+    if (mode === "topic" && !checkTopic()) return;
+    if (mode === "brief" && !brief) return;
     setLoading(true);
     setStage(0);
     setError("");
     try {
-      const t = topic.trim();
-      const research = await call("/api/article/research", { companyId: company.id, topic: t, provider });
+      const t = brief ? brief.mainKeyword : topic.trim();
+      const research = await call("/api/article/research", {
+        companyId: company.id,
+        topic: t,
+        provider,
+        brief: brief ?? undefined,
+      });
       setStage(1);
-      const d = await call("/api/article/draft", { companyId: company.id, topic: t, notes: research.notes });
+      const d = await call("/api/article/draft", {
+        companyId: company.id,
+        topic: t,
+        notes: research.notes,
+        brief: brief ?? undefined,
+        outline: research.outline,
+      });
       setStage(2);
       const f = (await call("/api/article/finish", {
         companyId: company.id,
@@ -104,6 +146,8 @@ export default function ArticleWriter({
         draft: d.draft,
         notes: research.notes,
         pages: research.pages,
+        examplePages: research.examplePages,
+        brief: brief ?? undefined,
       })) as unknown as Omit<Draft, "topic">;
       const pageList = research.pages as Array<{ url: string }>;
       const domains = new Set(pageList.map((p) => new URL(p.url).hostname.replace(/^www\./, ""))).size;
@@ -112,7 +156,12 @@ export default function ArticleWriter({
         ...f,
         meta: `חיפוש עם ${provider === "tavily" ? "Tavily" : "Claude"}: נקראו ${pageList.length} מקורות מ-${domains} אתרים`,
       });
-      say(`נכתבו ${f.words} מילים. עברו על האזהרות ושמרו.`);
+      const failed = f.compliance?.filter((c) => !c.ok).length ?? 0;
+      say(
+        failed
+          ? `נכתבו ${f.words} מילים. ${failed} בדיקות בבריף לא עברו.`
+          : `נכתבו ${f.words} מילים. עברו על האזהרות ושמרו.`
+      );
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : "לא הצלחתי לכתוב את המאמר. נסו שוב.");
     } finally {
@@ -174,17 +223,72 @@ export default function ArticleWriter({
 
       <section className="card">
         <div className="field">
-          <label htmlFor="topic">נושא המאמר</label>
-          <input
-            id="topic"
-            value={topic}
-            onBlur={() => topic && checkTopic()}
-            onChange={(e) => setTopic(e.target.value)}
-            disabled={loading}
-          />
-          {topicError && <span className="error">{topicError}</span>}
-          <span className="hint">הכלי קורא מקורות אמיתיים, בודק אותם וכותב כ-1,200 מילים בקול של המותג.</span>
+          <label htmlFor="mode">סוג כתיבה</label>
+          <select id="mode" value={mode} disabled={loading}
+            onChange={(e) => { setMode(e.target.value as "topic" | "brief"); setError(""); }}>
+            <option value="topic">נושא בלבד</option>
+            <option value="brief">לפי בריף</option>
+          </select>
         </div>
+
+        {mode === "topic" ? (
+          <div className="field">
+            <label htmlFor="topic">נושא המאמר</label>
+            <input
+              id="topic"
+              value={topic}
+              onBlur={() => topic && checkTopic()}
+              onChange={(e) => setTopic(e.target.value)}
+              disabled={loading}
+            />
+            {topicError && <span className="error">{topicError}</span>}
+            <span className="hint">הכלי קורא מקורות אמיתיים, בודק אותם וכותב כ-1,200 מילים בקול של המותג.</span>
+          </div>
+        ) : (
+          <>
+            <div className="field">
+              <label htmlFor="brief">בריף</label>
+              <textarea
+                id="brief"
+                style={{ minHeight: 160 }}
+                value={briefText}
+                disabled={loading || parsing}
+                onChange={(e) => { setBriefText(e.target.value); setBriefs(null); }}
+              />
+              {briefError && <span className="error">{briefError}</span>}
+              <span className="hint">הדביקו בריף אחד או מסמך עם כמה בריפים. הכלי מזהה כתובת, אורך, כותרות, מילות מפתח, שאלות וקישורים.</span>
+            </div>
+
+            {briefs && briefs.length > 1 && (
+              <div className="field">
+                <label htmlFor="which">איזה בריף לכתוב</label>
+                <select id="which" value={briefIndex} disabled={loading}
+                  onChange={(e) => setBriefIndex(Number(e.target.value))}>
+                  {briefs.map((b, i) => (
+                    <option key={i} value={i}>{b.name}: {b.mainKeyword}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {brief && (
+              <div className="stack" style={{ background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: 12 }}>
+                <strong>מה זוהה בבריף</strong>
+                <small>כתובת: <span dir="ltr">{brief.url || "לא צוינה"}</span></small>
+                <small>אורך: <span className="numeric">{brief.wordCount}</span> מילים, כולל השאלות הנפוצות</small>
+                <small>מילות מפתח: {brief.keywords.join(", ")}</small>
+                <small>כותרות: {brief.sections.map((x) => x.title).join(" | ")}</small>
+                <small>
+                  שאלות נפוצות: <span className="numeric">{brief.faqQuestions.length}</span>, תשובות של{" "}
+                  <span className="numeric">{brief.faqMinWords}</span> עד <span className="numeric">{brief.faqMaxWords}</span> מילים
+                </small>
+                <small>קישורים פנימיים: <span className="numeric">{brief.internalLinks.length}</span></small>
+                <small>דפי דוגמה לקריאה בלבד: <span className="numeric">{brief.examples.length}</span></small>
+              </div>
+            )}
+          </>
+        )}
+
         <div className="field">
           <label htmlFor="provider">מנוע חיפוש</label>
           <select id="provider" value={provider} disabled={loading}
@@ -194,10 +298,24 @@ export default function ArticleWriter({
           </select>
           <span className="hint">אפשר לכתוב את אותו נושא בשני המנועים ולהשוות.</span>
         </div>
+
         <div className="row">
-          <button className={draft ? "btn secondary" : "btn"} onClick={write} disabled={loading}>
-            {loading ? "כותב את המאמר..." : draft ? "כתיבה מחדש" : "כתיבת מאמר"}
-          </button>
+          {mode === "topic" ? (
+            <button className={draft ? "btn secondary" : "btn"} onClick={write} disabled={loading}>
+              {loading ? "כותב את המאמר..." : draft ? "כתיבה מחדש" : "כתיבת מאמר"}
+            </button>
+          ) : (
+            <>
+              <button className={brief ? "btn secondary" : "btn"} onClick={parseBrief} disabled={loading || parsing}>
+                {parsing ? "מנתח את הבריף..." : brief ? "ניתוח מחדש" : "ניתוח הבריף"}
+              </button>
+              {brief && (
+                <button className={draft ? "btn secondary" : "btn"} onClick={write} disabled={loading}>
+                  {loading ? "כותב לפי הבריף..." : draft ? "כתיבה מחדש" : "כתיבה לפי הבריף"}
+                </button>
+              )}
+            </>
+          )}
         </div>
         {loading && (
           <div className="stack" aria-busy="true">
@@ -230,6 +348,18 @@ export default function ArticleWriter({
           {draft.notes.map((n) => (
             <span key={n} className="status warn" role="status">{n}</span>
           ))}
+
+          {draft.compliance && draft.compliance.length > 0 && (
+            <div className="stack">
+              <strong style={{ fontSize: "0.95rem" }}>עמידה בבריף</strong>
+              {draft.compliance.map((c) => (
+                <div key={c.label}>
+                  <span className={`status ${c.ok ? "ok" : "warn"}`}>{c.ok ? "עומד" : "לא עומד"}</span>{" "}
+                  <strong>{c.label}:</strong> {c.detail}
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="field">
             <label htmlFor="content">תוכן (Markdown, אפשר לערוך)</label>

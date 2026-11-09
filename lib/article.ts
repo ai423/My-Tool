@@ -8,10 +8,8 @@ export const MAX_WORDS = 1400;
 
 // ---------- פרומפטים ----------
 
-export function buildSystem(): string {
-  return `אתה כותב תוכן מקצועי ל-SEO ול-GEO (אופטימיזציה למנועי AI). אתה כותב מאמרים שמנועי חיפוש ומודלי שפה מצטטים, ושעומדים בבדיקה של עורך קפדן.
-
-מקור העובדות:
+// כללים משותפים לכתיבה חופשית ולכתיבה לפי בריף
+export const FACTS_AND_COMPANY = `מקור העובדות:
 - אתה מקבל פתקי מחקר מאומתים, כל אחד עם כתובת מקור. זה חומר הגלם היחיד שלך לעובדות, לנתונים ולציטוטים.
 - כל עובדה, נתון או ציטוט נתמכים בקישור למקור שלהם בתוך הטקסט, בפורמט [טקסט](כתובת), עם הכתובת בדיוק כפי שהיא בפתק.
 - אסור מספר שלא מופיע בפתקים. אסור להוסיף נתון מהידע שלך. דוגמה חשבונית מותרת רק אם היא מסומנת במפורש כדוגמה (למשל "לדוגמה, אם...").
@@ -19,12 +17,16 @@ export function buildSystem(): string {
 - אתה לא רואה את הטקסט של המקורות, ולכן אתה לא יכול להעתיק אותו. נסח כל רעיון במילים שלך, בקול אחד, כמו כותב אחד.
 - פתקים עם scope "vendor" מתארים מוצר או מונח של יצרן מסוים. אל תציג אותם כהגדרה כללית של הנושא. השתמש בהם רק כדוגמה, בשם היצרן ("אצל Zendesk, למשל..."), ורק אם הם מועילים לקורא של החברה.
 - בנה את ההגדרה והחלקים הכלליים מפתקי scope "general". אם יש מעט מהם, כתוב פחות ובמדויק, ולא תמלא בתיעוד של יצרנים.
-- כל חלק עם כותרת H2 נשען על לפחות עובדה אחת עם קישור, או שהוא מסומן במפורש כתרחיש או כהמלצה. אין חלק שהוא רק טענות כלליות בלי מקור.
 
 הטענות על החברה:
 - אתה מתאר את החברה רק לפי הפרטים שקיבלת עליה (תיאור, מוצרים, הערות, מסר מיצוב). אל תייחס לה יכולת, מוצר, נתון או לקוח שלא כתובים שם.
 - נושא המאמר קרוב לתחום החברה אבל לא כתוב שהיא מספקת אותו? תאר את הקטגוריה בניטרליות, וחבר אותה לחברה רק דרך מה שכתוב עליה.
-- אל תזכיר חברות אחרות בשם כדי לקדם אותן. חברה מצוטטת רק כמקור לנתון או להגדרה.
+- אל תזכיר חברות אחרות בשם כדי לקדם אותן. חברה מצוטטת רק כמקור לנתון או להגדרה.`;
+
+export function buildSystem(): string {
+  return `אתה כותב תוכן מקצועי ל-SEO ול-GEO (אופטימיזציה למנועי AI). אתה כותב מאמרים שמנועי חיפוש ומודלי שפה מצטטים, ושעומדים בבדיקה של עורך קפדן.
+
+${FACTS_AND_COMPANY}
 
 סגנון:
 - שפה מקצועית, ברורה, בלי היסוס, לפי E-E-A-T. משפטים קצרים, פסקאות קצרות, רשימות איפה שמתאים, טבלה כשהיא עוזרת להשוות.
@@ -32,6 +34,7 @@ export function buildSystem(): string {
 - כל הגדרה פעם אחת בלבד. אין חזרות, וחלק השאלות הנפוצות לא חוזר על הגוף.
 - אין מקפים ארוכים בטקסט. במקומם פסיק, נקודה או נקודתיים.
 - אם בבקשה יש בריף, הוא גובר על כל כלל כללי כאן.
+- כל חלק עם כותרת H2 נשען על לפחות עובדה אחת עם קישור, או שהוא מסומן במפורש כתרחיש או כהמלצה. אין חלק שהוא רק טענות כלליות בלי מקור.
 
 מבנה, בסדר הזה:
 1. כותרת ראשית (H1) אחת, בשורה שמתחילה ב-"# ".
@@ -44,12 +47,10 @@ export function buildSystem(): string {
 הפלט הוא המאמר בלבד, ב-Markdown, בלי הסברים לפניו או אחריו.`;
 }
 
-export function buildPrompt(company: Company, topic: string, notes: Notes): string {
+// פרטי המותג, משותפים לכתיבה חופשית ולכתיבה לפי בריף
+export function companyLines(company: Company): string[] {
   const p = company.profile;
   const lines = [
-    `כתוב מאמר על הנושא: ${topic}`,
-    `אורך: בין 1,100 ל-${MAX_WORDS} מילים. אל תחרוג.`,
-    "",
     "פרטי המותג (חובה לכתוב בקולו):",
     `שם החברה: ${company.name}`,
     `אתר: ${company.website}`,
@@ -67,12 +68,19 @@ export function buildPrompt(company: Company, topic: string, notes: Notes): stri
     lines.push("שפת המאמר: עברית");
   }
   if (company.notes) lines.push(`הערות על המותג: ${company.notes.slice(0, 2000)}`);
-  lines.push(
+  return lines;
+}
+
+export function buildPrompt(company: Company, topic: string, notes: Notes): string {
+  return [
+    `כתוב מאמר על הנושא: ${topic}`,
+    `אורך: בין 1,100 ל-${MAX_WORDS} מילים. אל תחרוג.`,
+    "",
+    ...companyLines(company),
     "",
     "פתקי המחקר המאומתים (JSON). זה כל מה שמותר לך להשתמש בו כעובדות, נתונים וציטוטים:",
-    JSON.stringify(notes, null, 1)
-  );
-  return lines.join("\n");
+    JSON.stringify(notes, null, 1),
+  ].join("\n");
 }
 
 export function buildEditSystem(): string {
@@ -87,16 +95,10 @@ export type Issues = {
   copied: Array<{ sentence: string; url: string }>;
 };
 
-export function buildEditPrompt(
-  company: Company,
-  topic: string,
-  draft: string,
-  issues: Issues
-): string {
-  const p = company.profile;
-  const competitors = p?.competitors?.length ? p.competitors.join(", ") : "אין";
+// בלוקים של בעיות לעורך. באורך: רק כשיש מגבלת אורך כללית (לא בבריף).
+export function issueBlocks(issues: Issues, withLength = true): string[] {
   const found: string[] = [];
-  if (issues.words > MAX_WORDS)
+  if (withLength && issues.words > MAX_WORDS)
     found.push(
       `0. אורך: במאמר ${issues.words} מילים. קצר ל-${MAX_WORDS} מילים לכל היותר: מחק חזרות, פסקאות שוליות ודוגמאות מיותרות, ושמור על המבנה והקישורים.`
     );
@@ -124,6 +126,18 @@ export function buildEditPrompt(
         .map((c) => `- "${c.sentence}"`)
         .join("\n")}`
     );
+  return found;
+}
+
+export function buildEditPrompt(
+  company: Company,
+  topic: string,
+  draft: string,
+  issues: Issues
+): string {
+  const p = company.profile;
+  const competitors = p?.competitors?.length ? p.competitors.join(", ") : "אין";
+  const found = issueBlocks(issues);
 
   return `ערוך את הטיוטה הבאה על הנושא "${topic}" של החברה ${company.name}.
 
@@ -168,7 +182,8 @@ export function cleanDashes(text: string): string {
 // ---------- בדיקות איכות בקוד ----------
 
 const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
-const plainText = (md: string) => md.replace(LINK_RE, "$1");
+export const plainText = (md: string) => md.replace(LINK_RE, "$1");
+export const plainWordCount = (md: string) => plainText(md).split(/\s+/).filter(Boolean).length;
 
 const tokens = (s: string): string[] =>
   s
@@ -420,7 +435,8 @@ export async function processArticle(
   rawText: string,
   found: PageRef[],
   competitors: string[] = [],
-  ownSite = ""
+  ownSite = "",
+  ownAllowed?: string[]
 ): Promise<ProcessedArticle> {
   const start = rawText.search(/^# /m);
   let content = cleanDashes(start >= 0 ? rawText.slice(start) : rawText);
@@ -445,10 +461,13 @@ export async function processArticle(
   const own = cited.filter(isOwn);
   const fromSources = cited.filter((u) => !isOwn(u) && foundMap.has(normalizeUrl(u)));
   const invented = cited.filter((u) => !isOwn(u) && !foundMap.has(normalizeUrl(u)));
+  // בבריף מותרים רק הקישורים הפנימיים שהבריף קבע
+  const ownList = ownAllowed ? new Set(ownAllowed.map(normalizeUrl)) : null;
+  const strayOwn = ownList ? own.filter((u) => !ownList.has(normalizeUrl(u))) : [];
 
   const live = await checkLinks(fromSources);
   const dead = fromSources.filter((u) => !live.get(u));
-  const remove = new Set([...invented, ...dead]);
+  const remove = new Set([...invented, ...dead, ...strayOwn]);
 
   content = content.replace(LINK_RE, (full, text: string, url: string) =>
     remove.has(url) ? text : full
@@ -457,13 +476,13 @@ export async function processArticle(
   const sources = fromSources
     .filter((u) => live.get(u))
     .map((u) => ({ url: u, title: foundMap.get(normalizeUrl(u))!.title }));
-  void own;
 
   const notes: string[] = [];
   const many = (n: number) => (n === 1 ? "הוסר קישור אחד" : `הוסרו ${n} קישורים`);
   if (invented.length)
     notes.push(`${many(invented.length)} שלא הגיעו מהמקורות שנקראו. כדאי לבדוק את הטענות שלידם.`);
   if (dead.length) notes.push(`${many(dead.length)} שלא נפתחים. כדאי להחליף במקור אחר.`);
+  if (strayOwn.length) notes.push(`${many(strayOwn.length)} פנימיים שלא מופיעים בבריף.`);
 
   const plain = plainText(content).toLowerCase();
   for (const c of competitors) {
