@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { askClaude, hasClaudeKey } from "@/lib/claude";
+import { askClaude, askClaudeWithSearch, hasClaudeKey } from "@/lib/claude";
 import type { BrandProfile } from "@/lib/company";
 
 // POST { website, linkedin?, notes? } -> { profile }
@@ -32,6 +32,9 @@ function htmlToText(html: string): string {
     .trim();
   return `כותרת: ${title}\nתיאור: ${desc}\nתוכן: ${body}`.slice(0, 12000);
 }
+
+// חיפוש ברשת לוקח זמן: קריאת האתר ואז מחקר מתחרים
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   if (!hasClaudeKey()) {
@@ -98,7 +101,10 @@ ${page}
       products: Array.isArray(p.products) ? p.products.map(String) : [],
       avoid: Array.isArray(p.avoid) ? p.avoid.map(String) : [],
       positioning: "",
-      competitors: [],
+      competitors: await findCompetitors(domainOf(body.website ?? ""), url.href, {
+        summary: String(p.summary ?? ""),
+        products: Array.isArray(p.products) ? p.products.map(String) : [],
+      }),
     };
     return NextResponse.json({ profile });
   } catch {
@@ -106,5 +112,42 @@ ${page}
       { error: "לא הצלחתי לנתח את האתר. נסו שוב." },
       { status: 500 }
     );
+  }
+}
+
+function domainOf(raw: string): string {
+  return raw.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0];
+}
+
+// מחקר מתחרים בחיפוש ברשת. כישלון כאן לא מפיל את הניתוח: מחזירים רשימה ריקה.
+async function findCompetitors(
+  domain: string,
+  site: string,
+  info: { summary: string; products: string[] }
+): Promise<string[]> {
+  try {
+    const { text } = await askClaudeWithSearch(
+      `מצא את המתחרים הישירים של החברה שהאתר שלה ${site}.
+על החברה: ${info.summary}
+מוצרים ושירותים: ${info.products.join(", ")}
+
+כללים:
+- רק מתחרים ישירים: חברות שמוכרות מוצר דומה לאותו קהל.
+- עד 8 שמות, בשם המותג הרשמי כפי שהוא מופיע באתר שלהם.
+- רק חברות שמצאת בתוצאות החיפוש. אל תמציא.
+- לא כולל את החברה עצמה (${domain}), לא אתרי השוואה ולא אתרי ביקורות.
+החזר JSON בלבד: {"competitors":["שם","שם"]}`,
+      {
+        system: "אתה חוקר שוק. אתה עונה ב-JSON תקין בלבד, בלי טקסט לפניו או אחריו.",
+        maxTokens: 1500,
+        maxSearches: 3,
+      }
+    );
+    const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+    const list = (JSON.parse(json) as { competitors?: unknown }).competitors;
+    if (!Array.isArray(list)) return [];
+    return [...new Set(list.map((x) => String(x).trim()).filter(Boolean))].slice(0, 8);
+  } catch {
+    return [];
   }
 }

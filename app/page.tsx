@@ -72,8 +72,19 @@ export default function Home() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
-      setDraft({ ...draft, profile: j.profile });
-      say("האתר נקרא. עברו על הפרופיל ושמרו.");
+      // מיזוג: מה שכבר נכתב ביד נשאר, ומתחרים חדשים מתווספים לרשימה
+      const prev = draft.profile;
+      const found: string[] = j.profile.competitors ?? [];
+      const competitors = [...new Set([...(prev?.competitors ?? []), ...found])];
+      setDraft({
+        ...draft,
+        profile: { ...j.profile, positioning: prev?.positioning ?? "", competitors },
+      });
+      say(
+        found.length
+          ? `האתר נקרא ונמצאו ${found.length} מתחרים. עברו על הפרופיל ושמרו.`
+          : "האתר נקרא. לא נמצאו מתחרים, אפשר להוסיף ידנית."
+      );
     } catch (e) {
       setFormError(e instanceof Error && e.message ? e.message : "לא הצלחתי לקרוא את האתר. נסו שוב.");
     } finally {
@@ -242,9 +253,9 @@ export default function Home() {
             </div>
             <div className="row">
               <button className="btn secondary" onClick={analyze} disabled={analyzing}>
-                {analyzing ? "קורא את האתר..." : p ? "קריאה מחדש של האתר" : "קריאת האתר"}
+                {analyzing ? "קורא את האתר וחוקר מתחרים..." : p ? "קריאה מחדש של האתר" : "קריאת האתר"}
               </button>
-              {analyzing && <small>זה לוקח כמה שניות.</small>}
+              {analyzing && <small>זה לוקח כחצי דקה.</small>}
             </div>
           </section>
 
@@ -289,7 +300,7 @@ export default function Home() {
                 <label htmlFor="competitors">מתחרים שלא להזכיר</label>
                 <textarea id="competitors" value={(p.competitors ?? []).join("\n")}
                   onChange={(e) => setProfile({ competitors: lines(e.target.value) })} />
-                <span className="hint">שורה לכל שם. הכלי לא יזכיר אותם, ויסמן אזהרה אם הופיעו.</span>
+                <span className="hint">נמצאו בחיפוש ברשת. מחקו מי שלא מתאים והוסיפו מי שחסר. שורה לכל שם.</span>
               </div>
             </section>
           )}
