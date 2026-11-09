@@ -1,23 +1,10 @@
 import { NextResponse } from "next/server";
 import { askClaude, askClaudeWithSearch, hasClaudeKey } from "@/lib/claude";
 import type { BrandProfile } from "@/lib/company";
+import { isPublicUrl } from "@/lib/web";
 
 // POST { website, linkedin?, notes? } -> { profile }
 // קורא את דף הבית של האתר, ו-Claude מחלץ ממנו פרופיל מותג. ההרשאה נבדקת ב-middleware.
-
-function isPublicUrl(raw: string): URL | null {
-  try {
-    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
-    const h = u.hostname.toLowerCase();
-    if (!["http:", "https:"].includes(u.protocol)) return null;
-    if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return null;
-    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(h) || h.includes(":")) return null;
-    if (!h.includes(".")) return null;
-    return u;
-  } catch {
-    return null;
-  }
-}
 
 function htmlToText(html: string): string {
   const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
