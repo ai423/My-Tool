@@ -15,6 +15,7 @@ type Draft = {
   seo: ArticleSeo | null;
   companyClaims: string[];
   research: ResearchItem[];
+  meta?: string;
 };
 
 const STAGES = ["מחפש מקורות וקורא אותם", "כותב את המאמר", "בודק ומשפר"];
@@ -53,6 +54,7 @@ export default function ArticleWriter({
   const supabase = createClient();
   const [topic, setTopic] = useState("");
   const [topicError, setTopicError] = useState("");
+  const [provider, setProvider] = useState<"claude" | "tavily">("claude");
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState(0);
   const [error, setError] = useState("");
@@ -92,7 +94,7 @@ export default function ArticleWriter({
     setError("");
     try {
       const t = topic.trim();
-      const research = await call("/api/article/research", { companyId: company.id, topic: t });
+      const research = await call("/api/article/research", { companyId: company.id, topic: t, provider });
       setStage(1);
       const d = await call("/api/article/draft", { companyId: company.id, topic: t, notes: research.notes });
       setStage(2);
@@ -103,7 +105,13 @@ export default function ArticleWriter({
         notes: research.notes,
         pages: research.pages,
       })) as unknown as Omit<Draft, "topic">;
-      setDraft({ topic: t, ...f });
+      const pageList = research.pages as Array<{ url: string }>;
+      const domains = new Set(pageList.map((p) => new URL(p.url).hostname.replace(/^www\./, ""))).size;
+      setDraft({
+        topic: t,
+        ...f,
+        meta: `חיפוש עם ${provider === "tavily" ? "Tavily" : "Claude"}: נקראו ${pageList.length} מקורות מ-${domains} אתרים`,
+      });
       say(`נכתבו ${f.words} מילים. עברו על האזהרות ושמרו.`);
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : "לא הצלחתי לכתוב את המאמר. נסו שוב.");
@@ -177,6 +185,15 @@ export default function ArticleWriter({
           {topicError && <span className="error">{topicError}</span>}
           <span className="hint">הכלי קורא מקורות אמיתיים, בודק אותם וכותב כ-1,200 מילים בקול של המותג.</span>
         </div>
+        <div className="field">
+          <label htmlFor="provider">מנוע חיפוש</label>
+          <select id="provider" value={provider} disabled={loading}
+            onChange={(e) => setProvider(e.target.value as "claude" | "tavily")}>
+            <option value="claude">Claude</option>
+            <option value="tavily">Tavily</option>
+          </select>
+          <span className="hint">אפשר לכתוב את אותו נושא בשני המנועים ולהשוות.</span>
+        </div>
         <div className="row">
           <button className={draft ? "btn secondary" : "btn"} onClick={write} disabled={loading}>
             {loading ? "כותב את המאמר..." : draft ? "כתיבה מחדש" : "כתיבת מאמר"}
@@ -206,6 +223,7 @@ export default function ArticleWriter({
             <h3 style={{ fontSize: "1.05rem" }}>המאמר</h3>
             <small>
               <span className="numeric">{wordCount(draft.content)}</span> מילים
+              {draft.meta ? ` · ${draft.meta}` : ""}
             </small>
           </div>
 

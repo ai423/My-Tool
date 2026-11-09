@@ -42,10 +42,31 @@ export function htmlToPlain(html: string): string {
     .trim();
 }
 
-// טקסט נקי של עמוד. מחזיר null אם העמוד חסום, לא טקסטואלי או ריק.
+// גיבוי לעמודים שחוסמים קריאה אוטומטית או נטענים ב-JavaScript: Jina Reader.
+// המפתח אופציונלי. בלעדיו השירות עובד במגבלות נמוכות יותר.
+async function fetchViaJina(url: string, maxChars: number): Promise<string | null> {
+  const key = process.env.JINA_API_KEY;
+  try {
+    const r = await fetch(`https://r.jina.ai/${url}`, {
+      headers: { accept: "text/plain", ...(key ? { authorization: `Bearer ${key}` } : {}) },
+      signal: AbortSignal.timeout(25000),
+    });
+    if (!r.ok) return null;
+    const text = (await r.text()).replace(/\s+/g, " ").trim();
+    return text.length < 300 ? null : text.slice(0, maxChars);
+  } catch {
+    return null;
+  }
+}
+
+// טקסט נקי של עמוד. קודם קריאה ישירה, ואם נכשלה, דרך Jina Reader.
 export async function fetchPageText(raw: string, maxChars = 60000): Promise<string | null> {
   const u = isPublicUrl(raw);
   if (!u) return null;
+  return (await fetchDirect(u, maxChars)) ?? (await fetchViaJina(u.href, maxChars));
+}
+
+async function fetchDirect(u: URL, maxChars: number): Promise<string | null> {
   try {
     const r = await fetch(u, {
       headers: {
