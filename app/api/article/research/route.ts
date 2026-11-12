@@ -29,17 +29,19 @@ export async function POST(req: Request) {
         422
       );
     }
+    const brief = r.body.brief as ParsedBrief | undefined;
     const { notes, dropped } = await extractNotes(
       r.topic,
       r.company.profile?.language || "עברית",
-      pages
+      pages,
+      r.company.profile?.audience || r.company.profile?.summary || ""
     );
-    if (notes.facts.length + notes.stats.length === 0) {
+    // בבריף, ערך מושגי יכול להיכתב בלי פתקים אם המקורות לא התאימו לקהל
+    if (!brief && notes.facts.length + notes.stats.length === 0) {
       return fail("לא נמצא במקורות חומר שאפשר לסמוך עליו. נסו ניסוח אחר של הנושא.", 422);
     }
 
     // בבריף: דפי הדוגמה נקראים לכיסוי ולבדיקת העתקה בלבד, ולא משמשים מקור
-    const brief = r.body.brief as ParsedBrief | undefined;
     const examples = brief?.examples?.length
       ? await readPages(brief.examples.map((url) => ({ url, title: url })))
       : [];

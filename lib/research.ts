@@ -56,7 +56,7 @@ const ANGLES = (topic: string, company: Company) => {
   return [
     {
       name: "הגדרה",
-      ask: `מצא הגדרות והסברים כלליים וניטרליים של הנושא "${topic}": אנציקלופדיות, מאמרים אקדמיים, הסברים של גופי מקצוע ועיתונות מקצועית. אל תבחר תיעוד של מוצר ספציפי של יצרן.`,
+      ask: `מצא הגדרות והסברים כלליים וניטרליים של הנושא "${topic}" כפי שהוא מוסבר היום לקהל מקצועי. ${ctx}. אל תבחר תיעוד של מוצר ספציפי של יצרן.`,
     },
     {
       name: "שימוש בתעשייה",
@@ -73,7 +73,7 @@ const ANGLES = (topic: string, company: Company) => {
   ].map((a) => ({
     ...a,
     prompt: `${a.ask}
-בחר עד 4 עמודים. עדיפות מוחלטת למקורות סמכותיים: גופי תקינה, מדריכי פרקטיקה, תיעוד רשמי, ארגונים מקצועיים, אקדמיה וגופים ממשלתיים. בלוג של ספק רק אם אין מקור סמכותי, והימנע מאתרי השוואה שיווקיים ומחוות דעת של ספקים על מתחריהם.
+בחר עד 4 עמודים. המקורות צריכים להתאים לקהל היעד ולהיות עדכניים (עדיפות לחמש השנים האחרונות). מקור אקדמי או ספרייתי רק אם הוא מסביר את המושג הכללי ולא טכנולוגיה מיושנת. עדיפות מוחלטת למקורות סמכותיים: גופי תקינה, מדריכי פרקטיקה, תיעוד רשמי, ארגונים מקצועיים, אקדמיה וגופים ממשלתיים. בלוג של ספק רק אם אין מקור סמכותי, והימנע מאתרי השוואה שיווקיים ומחוות דעת של ספקים על מתחריהם.
 כתובות חייבות להיות בדיוק כפי שהופיעו בתוצאות החיפוש.
 
 החזר JSON בלבד: {"pages":[{"url":"...","title":"..."}]}`,
@@ -249,7 +249,8 @@ export async function readPages(refs: PageRef[]): Promise<Page[]> {
 export async function extractNotes(
   topic: string,
   language: string,
-  pages: Page[]
+  pages: Page[],
+  audience = ""
 ): Promise<{ notes: Notes; dropped: number }> {
   // קריאה עמוקה: תקציב כולל של כ-110 אלף תווים, עד 24 אלף לעמוד
   const budget = Math.min(24000, Math.floor(110000 / Math.max(1, pages.length)));
@@ -265,6 +266,7 @@ export async function extractNotes(
 
 חלץ פתקי מחקר לכתיבת המאמר:
 - facts: עד 30 עובדות, ולא יותר מ-6 מאותו עמוד. עדיפות להגדרות, מנגנונים, שלבים והבחנות ממסמכים סמכותיים. כל עובדה מנוסחת מחדש במילים שלך, לא מועתקת. אסור להעתיק משפטים.
+- לכל עובדה ונתון הוסף fit: "high" אם הם רלוונטיים לקהל היעד (${audience || "ארגונים ומוקדי שירות"}), או "low" אם הם מתארים הקשר אחר (למשל ספריות או אקדמיה בלבד). הוסף dated: true אם הם מתארים טכנולוגיה, פרקטיקה או נתון שנראים מיושנים (לפני 2020 בקירוב), ואינם הגדרה כללית שלא משתנה.
 - לכל עובדה הוסף evidence: ציטוט קצר של עד 25 מילים, מילה במילה כפי שהוא כתוב בעמוד, שמגבה אותה. הוא משמש לאימות בלבד.
 - stats: עד 12 נתונים מספריים. כל אחד עם ההקשר (מה נמדד, מתי, מי מדד), וכפי שהמספר מופיע בעמוד.
 - לכל עובדה ונתון הוסף scope: "general" אם זה נכון לנושא באופן כללי, או "vendor" אם זה מתאר תכונה, מונח או התנהגות של מוצר מסוים של יצרן. במקרה של vendor הוסף גם vendor עם שם היצרן. אל תסמן מונח של יצרן כהגדרה כללית.
@@ -275,7 +277,7 @@ export async function extractNotes(
 ${material}
 
 החזר JSON בלבד:
-{"facts":[{"claim":"","evidence":"","url":"","scope":"general","vendor":""}],"stats":[{"stat":"","context":"","url":"","scope":"general","vendor":""}],"quotes":[{"text":"","speaker":"","role":"","url":""}]}`,
+{"facts":[{"claim":"","evidence":"","url":"","scope":"general","vendor":"","fit":"high","dated":false}],"stats":[{"stat":"","context":"","url":"","scope":"general","vendor":"","fit":"high","dated":false}],"quotes":[{"text":"","speaker":"","role":"","url":""}]}`,
     {
       system: "אתה עוזר מחקר מדויק. אתה עונה ב-JSON תקין בלבד.",
       maxTokens: 9000,
@@ -322,5 +324,25 @@ ${material}
     return ok;
   });
 
-  return { notes: { facts, stats, quotes } as Notes, dropped };
+  // עובדות ונתונים שלא מתאימים לקהל או מיושנים נפסלים. השדות עצמם לא עוברים הלאה.
+  const relevant = (x: object) => {
+    const y = x as { fit?: string; dated?: boolean };
+    const ok = y.fit !== "low" && y.dated !== true;
+    if (!ok) dropped++;
+    return ok;
+  };
+  const strip = <T extends object>(x: T): T => {
+    const { fit, dated, ...rest } = x as T & { fit?: string; dated?: boolean };
+    void fit;
+    void dated;
+    return rest as T;
+  };
+  return {
+    notes: {
+      facts: facts.filter(relevant).map(strip),
+      stats: stats.filter(relevant).map(strip),
+      quotes,
+    } as Notes,
+    dropped,
+  };
 }
