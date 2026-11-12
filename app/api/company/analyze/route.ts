@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { askClaude, askClaudeWithSearch, hasClaudeKey } from "@/lib/claude";
 import type { BrandProfile } from "@/lib/company";
 import { isPublicUrl } from "@/lib/web";
+import { scanSiteFacts } from "@/lib/site";
 
 // POST { website, linkedin?, notes? } -> { profile }
 // קורא את דף הבית של האתר, ו-Claude מחלץ ממנו פרופיל מותג. ההרשאה נבדקת ב-middleware.
@@ -21,7 +22,7 @@ function htmlToText(html: string): string {
 }
 
 // חיפוש ברשת לוקח זמן: קריאת האתר ואז מחקר מתחרים
-export const maxDuration = 120;
+export const maxDuration = 240;
 
 export async function POST(req: Request) {
   if (!hasClaudeKey()) {
@@ -88,12 +89,20 @@ ${page}
       products: Array.isArray(p.products) ? p.products.map(String) : [],
       avoid: Array.isArray(p.avoid) ? p.avoid.map(String) : [],
       positioning: "",
-      competitors: await findCompetitors(domainOf(body.website ?? ""), url.href, {
-        summary: String(p.summary ?? ""),
-        products: Array.isArray(p.products) ? p.products.map(String) : [],
-      }),
+      competitors: [],
+      facts: [],
     };
-    return NextResponse.json({ profile });
+    // מתחרים וסריקת עובדות רצים במקביל. כישלון באחד לא מפיל את השני.
+    const [competitors, scan] = await Promise.all([
+      findCompetitors(domainOf(body.website ?? ""), url.href, {
+        summary: profile.summary,
+        products: profile.products,
+      }),
+      scanSiteFacts(url.href).catch(() => ({ facts: [], pages: 0 })),
+    ]);
+    profile.competitors = competitors;
+    profile.facts = scan.facts;
+    return NextResponse.json({ profile, scanned: scan.pages });
   } catch {
     return NextResponse.json(
       { error: "לא הצלחתי לנתח את האתר. נסו שוב." },

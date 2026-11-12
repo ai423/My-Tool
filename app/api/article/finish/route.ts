@@ -81,7 +81,9 @@ export async function POST(req: Request) {
       refs,
       r.company.profile?.competitors ?? [],
       r.company.website,
-      brief ? brief.internalLinks : undefined
+      brief
+        ? [...brief.internalLinks, ...(r.company.profile?.facts ?? []).map((f) => f.url).filter(Boolean)]
+        : undefined
     );
 
     // בדיקה חוזרת אחרי העריכה והניקוי: מה שנשאר מוצג כאזהרה
