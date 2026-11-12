@@ -38,7 +38,8 @@ async function call(path: string, body: unknown) {
   return j;
 }
 
-const wordCount = (s: string) => s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").split(/\s+/).filter(Boolean).length;
+const wordCount = (s: string) =>
+  s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 
 const fmtDate = (iso: string) => {
   const d = new Date(iso);

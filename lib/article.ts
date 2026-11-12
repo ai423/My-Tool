@@ -13,6 +13,8 @@ export const FACTS_AND_COMPANY = `מקור העובדות:
 - אתה מקבל פתקי מחקר מאומתים, כל אחד עם כתובת מקור. זה חומר הגלם היחיד שלך לעובדות, לנתונים ולציטוטים.
 - כל עובדה, נתון או ציטוט נתמכים בקישור למקור שלהם בתוך הטקסט, בפורמט [טקסט](כתובת), עם הכתובת בדיוק כפי שהיא בפתק.
 - אסור מספר שלא מופיע בפתקים. אסור להוסיף נתון מהידע שלך. דוגמה חשבונית מותרת רק אם היא מסומנת במפורש כדוגמה (למשל "לדוגמה, אם...").
+- אל תנסח הכללות כמו "רוב הארגונים", "בדרך כלל", "הענפים המובילים" או טווחי מספרים בלי מקור. אין נתון אמין? אמור זאת במפורש, ותן שיקולים וקריטריונים.
+- אם הפתקים מועטים או לא מתאימים לקהל, כתוב הסבר מושגי בלי ציטוט. אל תכניס היסטוריה או טכנולוגיה מיושנת או ספרייתית כדי למלא מקום.
 - הסבר מושגי כללי (איך משהו עובד, הגדרה כללית, השוואה בין גישות, דוגמה) מותר בלי קישור, בתנאי שאין בו נתון, ציטוט, שם של ארגון או ייחוס למקור. ייחוס, נתון, ציטוט וטענה ספציפית על ארגון, מחקר או מוצר דורשים קישור.
 - ציטוט ישיר של אדם רק מתוך הפתקים, מילה במילה, עם שם ותפקיד. אין ציטוטים בפתקים? אל תכלול ציטוט, ואל תמציא.
 - אתה לא רואה את הטקסט של המקורות, ולכן אתה לא יכול להעתיק אותו. נסח כל רעיון במילים שלך, בקול אחד, כמו כותב אחד.
@@ -202,7 +204,8 @@ export function cleanDashes(text: string): string {
 
 const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
 export const plainText = (md: string) => md.replace(LINK_RE, "$1");
-export const plainWordCount = (md: string) => plainText(md).split(/\s+/).filter(Boolean).length;
+export const plainWordCount = (md: string) =>
+  plainText(md).split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 
 const tokens = (s: string): string[] =>
   s
@@ -230,6 +233,27 @@ function sentencesOf(markdown: string): string[] {
 }
 
 const ILLUSTRATIVE = /לדוגמה|נניח|תרחיש|דמיינו|for example|for instance|e\.g\.|suppose|imagine|if \d/i;
+
+// מספרים במילים בהקשר של כמות או הכללה ("between five and twenty", "most ... "), שאינם בפתקים
+const NUMWORD = /\b(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|half|quarter|fifth|third|dozens?|שניים|שלושה|ארבעה|חמישה|עשרה|עשרים|שלושים|חמישים|מאה|אלף|מיליון)\b/gi;
+const QUANT = /\b(between|nearly|roughly|approximately|about|around|more than|less than|up to|at least|average|percent|majority|most)\b|בין|כמעט|בערך|כ-|יותר מ|פחות מ|רוב |ממוצע|אחוז/i;
+
+export function findSpelledNumbers(
+  content: string,
+  allowedText: string
+): Array<{ sentence: string; numbers: string[] }> {
+  const allowed = allowedText.toLowerCase();
+  const out: Array<{ sentence: string; numbers: string[] }> = [];
+  for (const raw of sentencesOf(content)) {
+    if (ILLUSTRATIVE.test(raw)) continue;
+    const sentence = plainText(raw);
+    if (!QUANT.test(sentence)) continue;
+    const words = [...sentence.matchAll(NUMWORD)].map((m) => m[0].toLowerCase());
+    const missing = [...new Set(words)].filter((w) => !allowed.includes(w));
+    if (missing.length) out.push({ sentence, numbers: missing });
+  }
+  return out;
+}
 
 export function findUnsupported(
   content: string,
@@ -324,7 +348,10 @@ export function computeIssues(
   return {
     words: plainText(content).split(/\s+/).filter(Boolean).length,
     unsourcedSections: findUnsourcedSections(content),
-    unsupported: findUnsupported(content, allowedText),
+    unsupported: [
+      ...findUnsupported(content, allowedText),
+      ...findSpelledNumbers(content, allowedText),
+    ].slice(0, 8),
     repeated: findRepeated(content),
     copied: findCopied(content, pages, notes),
   };
@@ -492,8 +519,19 @@ export async function processArticle(
     remove.has(url) ? text : full
   );
 
+  // כל מקור חיצוני מקושר פעם אחת, ועד שלושה מקורות. קישורים נוספים הופכים לטקסט.
+  const seen = new Set<string>();
+  content = content.replace(LINK_RE, (full, text: string, url: string) => {
+    if (isOwn(url)) return full;
+    const k = normalizeUrl(url);
+    if (seen.has(k) || seen.size >= 3) return text;
+    seen.add(k);
+    return full;
+  });
+  const kept = new Set(extractLinks(content));
+
   const sources = fromSources
-    .filter((u) => live.get(u))
+    .filter((u) => live.get(u) && kept.has(u))
     .map((u) => ({ url: u, title: foundMap.get(normalizeUrl(u))!.title }));
 
   const notes: string[] = [];
@@ -508,7 +546,8 @@ export async function processArticle(
     if (c.trim() && plain.includes(c.trim().toLowerCase()))
       notes.push(`המאמר מזכיר את "${c.trim()}", שהוגדר כמתחרה. הסירו את האזכור לפני פרסום.`);
   }
-  if (sources.length === 0) notes.push("אין במאמר אף מקור מאומת. הוסיפו מקורות לפני פרסום.");
+  if (sources.some((x) => /\.pdf(\?|$)|\/download(\/|\?|$)/i.test(x.url)))
+    notes.push("אחד המקורות הוא קובץ PDF או הורדה ישירה. מומלץ להחליף בעמוד נחיתה של המקור.");
 
   const title = content.match(/^# (.+)$/m)?.[1].trim() ?? "מאמר ללא כותרת";
   const words = plainText(content).split(/\s+/).filter(Boolean).length;
