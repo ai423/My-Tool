@@ -24,6 +24,7 @@ export default function Home() {
   const [loadError, setLoadError] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [writing, setWriting] = useState<Company | null>(null);
+  const [scanTick, setScanTick] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -76,14 +77,17 @@ export default function Home() {
       const prev = draft.profile;
       const found: string[] = j.profile.competitors ?? [];
       const competitors = [...new Set([...(prev?.competitors ?? []), ...found])];
+      // עובדות: סריקה חדשה מחליפה עובדות מאותם עמודים, ועובדות מעמודים אחרים נשארות
+      const newFacts: Array<{ claim: string; url: string }> = j.profile.facts ?? [];
+      const scannedUrls = new Set(newFacts.map((f) => f.url));
+      const facts = [...(prev?.facts ?? []).filter((f) => !scannedUrls.has(f.url)), ...newFacts];
       setDraft({
         ...draft,
-        profile: { ...j.profile, positioning: prev?.positioning ?? "", competitors },
+        profile: { ...j.profile, positioning: prev?.positioning ?? "", competitors, facts },
       });
+      setScanTick((t) => t + 1);
       say(
-        found.length
-          ? `האתר נקרא ונמצאו ${found.length} מתחרים. עברו על הפרופיל ושמרו.`
-          : "האתר נקרא. לא נמצאו מתחרים, אפשר להוסיף ידנית."
+        `האתר נקרא: ${newFacts.length} עובדות מאושרות ו-${found.length} מתחרים. עברו על הפרופיל ושמרו.`
       );
     } catch (e) {
       setFormError(e instanceof Error && e.message ? e.message : "לא הצלחתי לקרוא את האתר. נסו שוב.");
@@ -253,9 +257,9 @@ export default function Home() {
             </div>
             <div className="row">
               <button className="btn secondary" onClick={analyze} disabled={analyzing}>
-                {analyzing ? "קורא את האתר וחוקר מתחרים..." : p ? "קריאה מחדש של האתר" : "קריאת האתר"}
+                {analyzing ? "קורא את האתר, סורק עובדות וחוקר מתחרים..." : p ? "קריאה מחדש של האתר" : "קריאת האתר"}
               </button>
-              {analyzing && <small>זה לוקח כחצי דקה.</small>}
+              {analyzing && <small>זה לוקח כדקה.</small>}
             </div>
           </section>
 
@@ -295,6 +299,28 @@ export default function Home() {
                 <input id="positioning" value={p.positioning ?? ""}
                   onChange={(e) => setProfile({ positioning: e.target.value })} />
                 <span className="hint">משפט אחד שהחברה רוצה שכל מאמר יעביר. אם ריק, הכלי לא ממציא מסר.</span>
+              </div>
+              <div className="field">
+                <label htmlFor="facts">עובדות מאושרות על החברה</label>
+                <textarea
+                  id="facts"
+                  key={`${draft.id ?? "new"}-${scanTick}`}
+                  style={{ minHeight: 160 }}
+                  defaultValue={(p.facts ?? []).map((f) => (f.url ? `${f.claim} | ${f.url}` : f.claim)).join("\n")}
+                  onChange={(e) =>
+                    setProfile({
+                      facts: lines(e.target.value).map((l) => {
+                        const i = l.lastIndexOf(" | ");
+                        return i >= 0
+                          ? { claim: l.slice(0, i).trim(), url: l.slice(i + 3).trim() }
+                          : { claim: l.trim(), url: "" };
+                      }),
+                    })
+                  }
+                />
+                <span className="hint">
+                  נלקחו מהאתר של החברה, כל אחת עם ציטוט שאומת בעמוד. הכותב יטען על החברה רק מהרשימה הזאת. מחקו מה שלא נכון, והוסיפו שורות בצורה: טענה | כתובת.
+                </span>
               </div>
               <div className="field">
                 <label htmlFor="competitors">מתחרים שלא להזכיר</label>

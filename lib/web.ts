@@ -86,3 +86,51 @@ async function fetchDirect(u: URL, maxChars: number): Promise<string | null> {
     return null;
   }
 }
+
+// HTML גולמי של עמוד (קריאה ישירה בלבד). משמש לחילוץ קישורים.
+export async function fetchHtml(raw: string): Promise<string | null> {
+  const u = isPublicUrl(raw);
+  if (!u) return null;
+  try {
+    const r = await fetch(u, {
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        accept: "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(9000),
+      redirect: "follow",
+    });
+    if (!r.ok || !/html/i.test(r.headers.get("content-type") ?? "")) return null;
+    return (await r.text()).slice(0, 600000);
+  } catch {
+    return null;
+  }
+}
+
+const SKIP_PATH = /\.(pdf|jpe?g|png|gif|svg|webp|css|js|ico|zip|mp4|xml)(\?|$)|\/(blog|glossary|news|press|careers|jobs|privacy|terms|cookie|login|signin|signup|legal|tag|category|author|wp-)/i;
+
+// קישורים פנימיים מהעמוד, בלי קבצים, בלוג ועמודי מערכת
+export function internalLinks(html: string, base: string): string[] {
+  let host = "";
+  try {
+    host = new URL(base).hostname.replace(/^www\./, "");
+  } catch {
+    return [];
+  }
+  const out = new Set<string>();
+  for (const m of html.matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)) {
+    try {
+      const u = new URL(m[1], base);
+      if (u.hostname.replace(/^www\./, "") !== host) continue;
+      if (!/^https?:$/.test(u.protocol) || SKIP_PATH.test(u.pathname + u.search)) continue;
+      u.hash = "";
+      u.search = "";
+      const href = u.href.replace(/\/+$/, "");
+      if (new URL(base).href.replace(/\/+$/, "") !== href) out.add(href + "/");
+    } catch {
+      // כתובת לא תקינה, מדלגים
+    }
+  }
+  return [...out].slice(0, 60);
+}

@@ -8,6 +8,7 @@ export type BrandProfile = {
   avoid: string[];
   positioning?: string;
   competitors?: string[];
+  facts?: Array<{ claim: string; url: string }>;
 };
 
 export type Company = {
@@ -29,6 +30,7 @@ export const emptyProfile: BrandProfile = {
   avoid: [],
   positioning: "",
   competitors: [],
+  facts: [],
 };
 
 export type ArticleSource = { url: string; title: string };
