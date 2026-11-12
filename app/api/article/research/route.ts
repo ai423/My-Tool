@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
-import { distinctDomains, extractNotes, gatherPages, MIN_DOMAINS, type Provider } from "@/lib/research";
+import {
+  distinctDomains,
+  extractNotes,
+  extractOutline,
+  gatherPages,
+  MIN_DOMAINS,
+  readPages,
+  type Provider,
+} from "@/lib/research";
+import type { ParsedBrief } from "@/lib/brief";
 import { fail, loadRequest } from "@/lib/article-api";
 
 // שלב 1: מוצא מקורות, קורא את העמודים, ומחלץ פתקי מחקר מאומתים.
@@ -28,9 +37,19 @@ export async function POST(req: Request) {
     if (notes.facts.length + notes.stats.length === 0) {
       return fail("לא נמצא במקורות חומר שאפשר לסמוך עליו. נסו ניסוח אחר של הנושא.", 422);
     }
+
+    // בבריף: דפי הדוגמה נקראים לכיסוי ולבדיקת העתקה בלבד, ולא משמשים מקור
+    const brief = r.body.brief as ParsedBrief | undefined;
+    const examples = brief?.examples?.length
+      ? await readPages(brief.examples.map((url) => ({ url, title: url })))
+      : [];
+    const outline = await extractOutline(examples);
+
     return NextResponse.json({
       notes,
       pages: pages.map(({ url, title }) => ({ url, title })),
+      examplePages: examples.map(({ url, title }) => ({ url, title })),
+      outline,
       dropped,
     });
   } catch (err) {
